@@ -1,5 +1,6 @@
 package com.example.springsecuritywithjwt.config;
 
+import com.example.springsecuritywithjwt.jwt.JwtFilter;
 import com.example.springsecuritywithjwt.jwt.JwtUtil;
 import com.example.springsecuritywithjwt.jwt.LoginFilter;
 import lombok.RequiredArgsConstructor;
@@ -54,6 +55,9 @@ public class SecurityConfig {
                         .requestMatchers("/login", "/", "/join").permitAll()
                         .requestMatchers("/admin").hasRole("ADMIN")
                         .anyRequest().authenticated());
+
+        http
+                .addFilterBefore(new JwtFilter(jwtUtil), LoginFilter.class); // Login필터 앞에다가 하기
 
         http
                 .addFilterAt(new LoginFilter(authenticationManager(authenticationConfiguration), jwtUtil), UsernamePasswordAuthenticationFilter.class);
