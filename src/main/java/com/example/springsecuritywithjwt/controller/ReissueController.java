@@ -1,6 +1,9 @@
 package com.example.springsecuritywithjwt.controller;
 
+import com.example.springsecuritywithjwt.domain.entity.RefreshEntity;
 import com.example.springsecuritywithjwt.jwt.JwtUtil;
+import com.example.springsecuritywithjwt.repository.RefreshRepository;
+import com.example.springsecuritywithjwt.util.CookieUtil;
 import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -11,11 +14,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Date;
+
 @RestController
 @RequiredArgsConstructor
 public class ReissueController {
 
     private final JwtUtil jwtUtil;
+    private final CookieUtil cookieUtil;
+    private final RefreshRepository refreshRepository;
 
     @PostMapping("/reissue")
     public ResponseEntity<?> reissue(HttpServletRequest request, HttpServletResponse response) {
@@ -54,15 +61,39 @@ public class ReissueController {
             return new ResponseEntity<>("invalid refresh token", HttpStatus.BAD_REQUEST);
         }
 
+        //DB에 저장되어 있는지 확인
+        Boolean isExist = refreshRepository.existsByToken(refresh);
+        if(!isExist){
+            return new ResponseEntity<>("invalid refresh token", HttpStatus.BAD_REQUEST);
+        }
+
         String username = jwtUtil.getUsername(refresh);
         String role = jwtUtil.getRole(refresh);
 
         //make new JWT
         String newAccess = jwtUtil.createJwt("access", username, role, 600000L);
+        String newRefresh = jwtUtil.createJwt("refresh", username, role, 86400000L);
+
+        //Refresh 토큰 저장 DB에 기존 Refresh 토큰 삭제 후 새 Refresh 토큰 저장
+        refreshRepository.deleteByRefresh(newRefresh);
+        addRefreshEntity(username, newRefresh, 86400000L);
 
         //response
         response.setHeader("access", newAccess);
+        response.addCookie(cookieUtil.createCookie("refresh", newRefresh));
 
         return new ResponseEntity<>(HttpStatus.OK);
+    }
+
+    private void addRefreshEntity(String username, String refresh, Long expiredMs) {
+
+        Date date = new Date(System.currentTimeMillis() + expiredMs);
+
+        RefreshEntity refreshEntity = new RefreshEntity();
+        refreshEntity.setUsername(username);
+        refreshEntity.setRefresh(refresh);
+        refreshEntity.setExpiration(date.toString());
+
+        refreshRepository.save(refreshEntity);
     }
 }
